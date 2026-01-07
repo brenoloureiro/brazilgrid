@@ -1,0 +1,14 @@
+[project]
+name = "brazilgrid"
+version = "0.1.0"
+description = "BrazilGrid - Análise de dados do setor elétrico brasileiro"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
