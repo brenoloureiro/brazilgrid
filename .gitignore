@@ -168,3 +168,4 @@ dbt_brazilgrid/logs/
 *.tfstate.*
 *.tfvars
 
+.claude/
