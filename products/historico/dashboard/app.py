@@ -42,7 +42,7 @@ def load_summary_data():
             max(din_instante) as data_fim,
             count(DISTINCT id_ons) as total_usinas,
             count(DISTINCT id_estado) as total_estados
-        FROM dev_brazilgrid_raw.restricao_coff_eolica_tm
+        FROM brazilgrid_historico.curtailment_eolico_conjunto
     """
     result = client.query(query)
     return result.result_rows[0]
@@ -53,7 +53,7 @@ def load_estados():
     client = get_client()
     query = """
         SELECT DISTINCT id_estado 
-        FROM dev_brazilgrid_raw.restricao_coff_eolica_tm 
+        FROM brazilgrid_historico.curtailment_eolico_conjunto 
         ORDER BY id_estado
     """
     result = client.query(query)
@@ -75,7 +75,7 @@ def load_curtailment_by_state(data_inicio, data_fim):
                     ELSE 0
                 END
             ) / 2, 2) as curtailment_mwh
-        FROM dev_brazilgrid_raw.restricao_coff_eolica_tm
+        FROM brazilgrid_historico.curtailment_eolico_conjunto
         WHERE din_instante >= '{data_inicio}'
           AND din_instante <= '{data_fim}'
         GROUP BY id_estado
@@ -122,7 +122,7 @@ def load_curtailment_timeline(data_inicio, data_fim, estado=None, granularidade=
                     ELSE 0
                 END
             ) / 2, 2) as curtailment_mwh
-        FROM dev_brazilgrid_raw.restricao_coff_eolica_tm
+        FROM brazilgrid_historico.curtailment_eolico_conjunto
         WHERE din_instante >= '{data_inicio}'
           AND din_instante <= '{data_fim}'
           {where_estado}
@@ -140,7 +140,7 @@ def load_curtailment_by_reason(data_inicio, data_fim):
         SELECT 
             cod_razaorestricao,
             round(sum(greatest(val_geracaoreferencia - val_geracao, 0)) / 2, 2) as curtailment_mwh
-        FROM dev_brazilgrid_raw.restricao_coff_eolica_tm
+        FROM brazilgrid_historico.curtailment_eolico_conjunto
         WHERE din_instante >= '{data_inicio}'
           AND din_instante <= '{data_fim}'
           AND cod_razaorestricao IS NOT NULL 
@@ -174,7 +174,7 @@ def load_total_curtailment(data_inicio, data_fim):
             ) / 2, 2) as curtailment_mwh,
             round(sum(val_geracao) / 2, 2) as geracao_mwh,
             round(sum(val_geracaoreferencia) / 2, 2) as referencia_mwh
-        FROM dev_brazilgrid_raw.restricao_coff_eolica_tm
+        FROM brazilgrid_historico.curtailment_eolico_conjunto
         WHERE din_instante >= '{data_inicio}'
           AND din_instante <= '{data_fim}'
     """
