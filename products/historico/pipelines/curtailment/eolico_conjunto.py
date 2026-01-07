@@ -35,8 +35,8 @@ from shared.handlers.manifest import ManifestManager
 
 DATASET = "restricao_coff_eolica_tm"
 S3_PREFIX = "dataset/restricao_coff_eolica_tm/"
-TABLE = "restricao_coff_eolica_tm"
-DATABASE = "dev_brazilgrid_raw"
+TABLE = "curtailment_eolico_conjunto"
+DATABASE = "brazilgrid_historico"
 RAW_DATA_DIR = Path("data/raw")
 MANIFEST_PATH = Path("data/processed") / f"{DATASET}_manifest.json"
 

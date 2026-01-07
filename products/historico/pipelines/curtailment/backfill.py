@@ -38,7 +38,7 @@ DATA_DIR = BASE_DIR / 'data' / 'raw' / 'restricao_coff_eolica_tm'
 MANIFEST_PATH = BASE_DIR / 'data' / 'processed' / 'restricao_coff_eolica_tm_manifest.json'
 
 S3_PREFIX = 'dataset/restricao_coff_eolica_tm/'
-TABLE_NAME = 'restricao_coff_eolica_tm'
+TABLE_NAME = 'curtailment_eolico_conjunto'
 
 # Padrão de arquivo ONS: RESTRICAO_COFF_EOLICA_YYYY_MM.parquet
 FILE_PATTERN = re.compile(r'RESTRICAO_COFF_EOLICA_(\d{4})_(\d{2})\.parquet')
@@ -246,7 +246,7 @@ def backfill_restricao(
         port=int(os.getenv('CLICKHOUSE_PORT', 8443)),
         user=os.getenv('CLICKHOUSE_USER', 'default'),
         password=os.getenv('CLICKHOUSE_PASSWORD'),
-        database='dev_brazilgrid_raw'
+        database='brazilgrid_historico'
     )
     
     manifest = ManifestManager(MANIFEST_PATH)
