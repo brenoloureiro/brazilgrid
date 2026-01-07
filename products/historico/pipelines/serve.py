@@ -1,7 +1,7 @@
 """
 Serve do pipeline diário com agendamento
 """
-from daily_restricao_tm import daily_restricao_tm
+from products.historico.pipelines.curtailment.eolico_conjunto import daily_restricao_tm
 
 if __name__ == "__main__":
     daily_restricao_tm.serve(

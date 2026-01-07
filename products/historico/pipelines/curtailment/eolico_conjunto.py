@@ -23,10 +23,10 @@ from dotenv import load_dotenv
 # Carregar variáveis de ambiente
 load_dotenv('config/.env')
 
-from utils.clickhouse_handler import ClickHouseHandler
-from utils.config_secrets import get_clickhouse_config, wake_clickhouse
-from utils.s3_handler import S3Handler
-from utils.manifest import ManifestManager
+from shared.handlers.clickhouse_handler import ClickHouseHandler
+from shared.handlers.config_secrets import get_clickhouse_config, wake_clickhouse
+from shared.handlers.s3_handler import S3Handler
+from shared.handlers.manifest import ManifestManager
 
 
 # ============================================================================

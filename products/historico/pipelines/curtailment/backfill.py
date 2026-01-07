@@ -18,7 +18,7 @@ from prefect import flow, task, get_run_logger
 from prefect.cache_policies import NONE
 from prefect.task_runners import ConcurrentTaskRunner
 
-from utils import S3Handler, ClickHouseHandler, ManifestManager
+from shared.handlers import S3Handler, ClickHouseHandler, ManifestManager
 
 
 def get_logger():
