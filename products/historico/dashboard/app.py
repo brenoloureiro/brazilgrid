@@ -6,9 +6,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
-import os
-from dotenv import load_dotenv
 import clickhouse_connect
+from shared.handlers.config_secrets import get_clickhouse_config
 
 # Configuracao da pagina
 st.set_page_config(
@@ -17,17 +16,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# Carregar variaveis de ambiente
-load_dotenv('../../config/.env')
-
 @st.cache_resource
 def get_client():
-    """Conexao com ClickHouse"""
+    """Conexao com ClickHouse via Prefect Secrets"""
+    config = get_clickhouse_config()
     return clickhouse_connect.get_client(
-        host=os.getenv("CLICKHOUSE_HOST"),
-        port=int(os.getenv("CLICKHOUSE_PORT", 8443)),
-        user=os.getenv("CLICKHOUSE_USER"),
-        password=os.getenv("CLICKHOUSE_PASSWORD"),
+        host=config["host"],
+        port=config["port"],
+        user=config["user"],
+        password=config["password"],
         secure=True
     )
 
