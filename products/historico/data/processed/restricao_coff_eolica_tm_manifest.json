@@ -1,0 +1,20 @@
+{
+  "2023-10": {
+    "downloads": [
+      {
+        "file_name": "RESTRICAO_COFF_EOLICA_2023_10_20260107.parquet",
+        "original_name": "RESTRICAO_COFF_EOLICA_2023_10.parquet",
+        "file_size_mb": 2.94,
+        "md5": "71df034939bedcbf77a14c15b81cfd29",
+        "s3_key": "dataset/restricao_coff_eolica_tm/RESTRICAO_COFF_EOLICA_2023_10.parquet",
+        "local_path": "C:\\projetos\\brazilgrid\\products\\historico\\data\\raw\\restricao_coff_eolica_tm\\RESTRICAO_COFF_EOLICA_2023_10_20260107.parquet",
+        "download_date": "20260107",
+        "rows_inserted": 227664,
+        "status": "success",
+        "ingested_at": "2026-01-07T14:11:39.617330"
+      }
+    ],
+    "last_download": "20260107",
+    "last_md5": "71df034939bedcbf77a14c15b81cfd29"
+  }
+}

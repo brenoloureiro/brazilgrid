@@ -19,6 +19,7 @@ from prefect.cache_policies import NONE
 from prefect.task_runners import ConcurrentTaskRunner
 
 from shared.handlers import S3Handler, ClickHouseHandler, ManifestManager
+from shared.handlers.config_secrets import get_clickhouse_config
 
 
 def get_logger():
@@ -241,11 +242,12 @@ def backfill_restricao(
     # Inicializar handlers
     s3_handler = S3Handler()
     
+    ch_config = get_clickhouse_config()
     ch_handler = ClickHouseHandler(
-        host=os.getenv('CLICKHOUSE_HOST'),
-        port=int(os.getenv('CLICKHOUSE_PORT', 8443)),
-        user=os.getenv('CLICKHOUSE_USER', 'default'),
-        password=os.getenv('CLICKHOUSE_PASSWORD'),
+        host=ch_config["host"],
+        port=ch_config["port"],
+        user=ch_config["user"],
+        password=ch_config["password"],
         database='brazilgrid_historico'
     )
     
