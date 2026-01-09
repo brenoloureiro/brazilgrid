@@ -7,7 +7,6 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import clickhouse_connect
-from shared.handlers.config_secrets import get_clickhouse_config
 
 # Configuracao da pagina
 st.set_page_config(
@@ -18,13 +17,12 @@ st.set_page_config(
 
 @st.cache_resource
 def get_client():
-    """Conexao com ClickHouse via Prefect Secrets"""
-    config = get_clickhouse_config()
+    """Conexao com ClickHouse via Streamlit Secrets"""
     return clickhouse_connect.get_client(
-        host=config["host"],
-        port=config["port"],
-        user=config["user"],
-        password=config["password"],
+        host=st.secrets["clickhouse"]["host"],
+        port=st.secrets["clickhouse"]["port"],
+        user=st.secrets["clickhouse"]["user"],
+        password=st.secrets["clickhouse"]["password"],
         secure=True
     )
 
@@ -301,7 +299,7 @@ try:
 
 except Exception as e:
     st.error(f"Erro ao conectar: {e}")
-    st.info("Verifique as credenciais em config/.env")
+    st.info("Verifique as credenciais em Settings > Secrets no Streamlit Cloud")
 
 # Footer
 st.markdown("---")
