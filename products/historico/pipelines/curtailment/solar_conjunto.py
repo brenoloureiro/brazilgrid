@@ -191,15 +191,18 @@ def get_months_to_process(last_date_in_db: datetime, today: datetime) -> List[st
     Returns:
         Lista de meses no formato ['2025-12', '2026-01']
     """
+    # Data inicial dos dados solares no ONS (Abril/2024)
+    SOLAR_DATA_START = datetime(2024, 4, 1)
+
     months = []
 
-    # Se nao tem dados, comecar do mes atual
-    if last_date_in_db is None:
-        current = today.replace(day=1)
-        return [current.strftime('%Y-%m')]
+    # Se nao tem dados ou data invalida (1970), comecar de Abril/2024
+    if last_date_in_db is None or last_date_in_db.year < 2020:
+        current = SOLAR_DATA_START
+    else:
+        # Comecar do mes da ultima data
+        current = last_date_in_db.replace(day=1)
 
-    # Comecar do mes da ultima data
-    current = last_date_in_db.replace(day=1)
     end = today
 
     while current <= end:
