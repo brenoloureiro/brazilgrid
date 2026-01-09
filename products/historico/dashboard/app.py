@@ -1,6 +1,6 @@
 """
 BrazilGrid - Dashboard de Curtailment Unificado
-v0.4 - Curtailment Conjunto + Detalhamento por Usina
+v0.5 - Curtailment Conjunto + Detalhamento por Usina (Eolica/Solar)
 """
 import streamlit as st
 import pandas as pd
@@ -16,6 +16,21 @@ st.set_page_config(
     page_icon="⚡",
     layout="wide"
 )
+
+# ============================================================================
+# GOOGLE ANALYTICS
+# ============================================================================
+
+st.markdown("""
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-FQTWR9T09P"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-FQTWR9T09P');
+    </script>
+""", unsafe_allow_html=True)
 
 
 # ============================================================================
@@ -218,14 +233,31 @@ def render_conjunto_tab():
 
 
 # ============================================================================
-# MODULO 2: DETALHAMENTO POR USINA
+# MODULO 2: DETALHAMENTO POR USINA (Eolica/Solar)
 # ============================================================================
 
-TABLE_USINA = "curtailment_eolico_usina"
+FONTES_USINA = {
+    "Eolica": {
+        "tabela": "curtailment_eolico_usina",
+        "icone": "🌬️",
+        "campo_recurso": "val_ventoverificado",
+        "campo_flag": "flg_dadoventoinvalido",
+        "label_recurso": "Vento",
+        "label_qualidade": "Qualidade do Vento"
+    },
+    "Solar": {
+        "tabela": "curtailment_solar_usina",
+        "icone": "☀️",
+        "campo_recurso": "val_irradianciaverificado",
+        "campo_flag": "flg_dadoirradianciainvalido",
+        "label_recurso": "Irradiancia",
+        "label_qualidade": "Qualidade da Irradiancia"
+    }
+}
 
 
 @st.cache_data(ttl=300)
-def usina_search(texto: str):
+def usina_search(texto: str, tabela: str):
     """Buscar usinas por nome ou CEG"""
     if len(texto) < 3:
         return []
@@ -233,7 +265,7 @@ def usina_search(texto: str):
     texto_escaped = texto.replace("'", "''")
     query = f"""
         SELECT DISTINCT nom_usina, ceg, id_estado, id_subsistema, nom_conjuntousina
-        FROM {DATABASE}.{TABLE_USINA}
+        FROM {DATABASE}.{tabela}
         WHERE nom_usina ILIKE '%{texto_escaped}%' OR ceg ILIKE '%{texto_escaped}%'
         ORDER BY nom_usina
         LIMIT 50
@@ -242,26 +274,26 @@ def usina_search(texto: str):
 
 
 @st.cache_data(ttl=3600)
-def usina_load_subsistemas():
+def usina_load_subsistemas(tabela: str):
     client = get_client()
-    query = f"SELECT DISTINCT id_subsistema FROM {DATABASE}.{TABLE_USINA} ORDER BY id_subsistema"
+    query = f"SELECT DISTINCT id_subsistema FROM {DATABASE}.{tabela} ORDER BY id_subsistema"
     return [row[0] for row in client.query(query).result_rows]
 
 
 @st.cache_data(ttl=3600)
-def usina_load_estados(subsistemas: tuple):
+def usina_load_estados(tabela: str, subsistemas: tuple):
     client = get_client()
     if subsistemas:
         subsistemas_str = ", ".join([f"'{s}'" for s in subsistemas])
         where = f"WHERE id_subsistema IN ({subsistemas_str})"
     else:
         where = ""
-    query = f"SELECT DISTINCT id_estado FROM {DATABASE}.{TABLE_USINA} {where} ORDER BY id_estado"
+    query = f"SELECT DISTINCT id_estado FROM {DATABASE}.{tabela} {where} ORDER BY id_estado"
     return [row[0] for row in client.query(query).result_rows]
 
 
 @st.cache_data(ttl=3600)
-def usina_load_conjuntos(subsistemas: tuple, estados: tuple):
+def usina_load_conjuntos(tabela: str, subsistemas: tuple, estados: tuple):
     client = get_client()
     conditions = []
     if subsistemas:
@@ -274,7 +306,7 @@ def usina_load_conjuntos(subsistemas: tuple, estados: tuple):
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"""
         SELECT DISTINCT nom_conjuntousina
-        FROM {DATABASE}.{TABLE_USINA}
+        FROM {DATABASE}.{tabela}
         {where}
         ORDER BY nom_conjuntousina
     """
@@ -283,7 +315,7 @@ def usina_load_conjuntos(subsistemas: tuple, estados: tuple):
 
 
 @st.cache_data(ttl=3600)
-def usina_load_usinas(subsistemas: tuple, estados: tuple, conjuntos: tuple):
+def usina_load_usinas(tabela: str, subsistemas: tuple, estados: tuple, conjuntos: tuple):
     client = get_client()
     conditions = []
     if subsistemas:
@@ -299,7 +331,7 @@ def usina_load_usinas(subsistemas: tuple, estados: tuple, conjuntos: tuple):
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"""
         SELECT DISTINCT nom_usina, ceg, id_ons
-        FROM {DATABASE}.{TABLE_USINA}
+        FROM {DATABASE}.{tabela}
         {where}
         ORDER BY nom_usina
     """
@@ -307,14 +339,14 @@ def usina_load_usinas(subsistemas: tuple, estados: tuple, conjuntos: tuple):
 
 
 @st.cache_data(ttl=3600)
-def usina_load_info(usina_nome: str):
+def usina_load_info(tabela: str, usina_nome: str):
     client = get_client()
     usina_escaped = usina_nome.replace("'", "''")
     query = f"""
         SELECT
             nom_usina, ceg, id_ons, id_estado, id_subsistema,
             nom_modalidadeoperacao, nom_conjuntousina
-        FROM {DATABASE}.{TABLE_USINA}
+        FROM {DATABASE}.{tabela}
         WHERE nom_usina = '{usina_escaped}'
         LIMIT 1
     """
@@ -330,14 +362,14 @@ def usina_load_info(usina_nome: str):
 
 
 @st.cache_data(ttl=3600)
-def usina_load_date_range():
+def usina_load_date_range(tabela: str):
     client = get_client()
-    query = f"SELECT min(din_instante), max(din_instante) FROM {DATABASE}.{TABLE_USINA}"
+    query = f"SELECT min(din_instante), max(din_instante) FROM {DATABASE}.{tabela}"
     result = client.query(query).result_rows[0]
     return result[0], result[1]
 
 
-def usina_build_where_clause(subsistemas, estados, conjuntos, usinas, data_inicio, data_fim):
+def usina_build_where_clause(tabela, subsistemas, estados, conjuntos, usinas, data_inicio, data_fim):
     conditions = [
         f"din_instante >= '{data_inicio}'",
         f"din_instante <= '{data_fim} 23:59:59'"
@@ -362,16 +394,16 @@ def usina_build_where_clause(subsistemas, estados, conjuntos, usinas, data_inici
 
 
 @st.cache_data(ttl=600)
-def usina_load_metrics(where_clause: str):
+def usina_load_metrics(tabela: str, campo_flag: str, where_clause: str):
     client = get_client()
     query = f"""
         SELECT
             count() as total_registros,
             round(avg(val_geracaoestimada), 2) as media_estimada,
             round(avg(val_geracaoverificada), 2) as media_verificada,
-            round(countIf(flg_dadoventoinvalido = 0 OR flg_dadoventoinvalido IS NULL) * 100.0 / count(), 1) as pct_vento_valido,
+            round(countIf({campo_flag} = 0 OR {campo_flag} IS NULL) * 100.0 / count(), 1) as pct_valido,
             round(avg(val_geracaoestimada - val_geracaoverificada), 2) as diff_media
-        FROM {DATABASE}.{TABLE_USINA}
+        FROM {DATABASE}.{tabela}
         WHERE {where_clause}
     """
     result = client.query(query).result_rows[0]
@@ -379,13 +411,13 @@ def usina_load_metrics(where_clause: str):
         'total_registros': result[0],
         'media_estimada': result[1] or 0,
         'media_verificada': result[2] or 0,
-        'pct_vento_valido': result[3] or 0,
+        'pct_valido': result[3] or 0,
         'diff_media': result[4] or 0
     }
 
 
 @st.cache_data(ttl=600)
-def usina_load_timeseries(where_clause: str, granularidade: str, usinas: tuple):
+def usina_load_timeseries(tabela: str, where_clause: str, granularidade: str, usinas: tuple):
     client = get_client()
 
     if granularidade == 'hora':
@@ -405,7 +437,7 @@ def usina_load_timeseries(where_clause: str, granularidade: str, usinas: tuple):
                 nom_usina,
                 round(avg(val_geracaoestimada), 2) as estimada,
                 round(avg(val_geracaoverificada), 2) as verificada
-            FROM {DATABASE}.{TABLE_USINA}
+            FROM {DATABASE}.{tabela}
             WHERE {where_clause}
             GROUP BY periodo, nom_usina
             ORDER BY periodo, nom_usina
@@ -420,7 +452,7 @@ def usina_load_timeseries(where_clause: str, granularidade: str, usinas: tuple):
                 {time_agg} as periodo,
                 round(avg(val_geracaoestimada), 2) as estimada,
                 round(avg(val_geracaoverificada), 2) as verificada
-            FROM {DATABASE}.{TABLE_USINA}
+            FROM {DATABASE}.{tabela}
             WHERE {where_clause}
             GROUP BY periodo
             ORDER BY periodo
@@ -434,11 +466,11 @@ def usina_load_timeseries(where_clause: str, granularidade: str, usinas: tuple):
 
 
 @st.cache_data(ttl=600)
-def usina_load_correlation_data(where_clause: str, limit: int = 10000):
+def usina_load_correlation_data(tabela: str, where_clause: str, limit: int = 10000):
     client = get_client()
     query = f"""
         SELECT val_geracaoestimada, val_geracaoverificada
-        FROM {DATABASE}.{TABLE_USINA}
+        FROM {DATABASE}.{tabela}
         WHERE {where_clause}
             AND val_geracaoestimada IS NOT NULL
             AND val_geracaoverificada IS NOT NULL
@@ -451,14 +483,14 @@ def usina_load_correlation_data(where_clause: str, limit: int = 10000):
 
 
 @st.cache_data(ttl=600)
-def usina_load_wind_quality(where_clause: str):
+def usina_load_resource_quality(tabela: str, campo_flag: str, where_clause: str):
     client = get_client()
     query = f"""
         SELECT
             toStartOfMonth(din_instante) as mes,
-            countIf(flg_dadoventoinvalido = 0 OR flg_dadoventoinvalido IS NULL) as validos,
-            countIf(flg_dadoventoinvalido = 1) as invalidos
-        FROM {DATABASE}.{TABLE_USINA}
+            countIf({campo_flag} = 0 OR {campo_flag} IS NULL) as validos,
+            countIf({campo_flag} = 1) as invalidos
+        FROM {DATABASE}.{tabela}
         WHERE {where_clause}
         GROUP BY mes
         ORDER BY mes
@@ -470,38 +502,53 @@ def usina_load_wind_quality(where_clause: str):
 
 
 @st.cache_data(ttl=600)
-def usina_load_raw_data(where_clause: str, limit: int = 1000):
+def usina_load_raw_data(tabela: str, campo_recurso: str, campo_flag: str, label_recurso: str, where_clause: str, limit: int = 1000):
     client = get_client()
     query = f"""
         SELECT
             din_instante, nom_usina, ceg, id_estado,
             val_geracaoestimada, val_geracaoverificada,
-            val_ventoverificado, flg_dadoventoinvalido
-        FROM {DATABASE}.{TABLE_USINA}
+            {campo_recurso}, {campo_flag}
+        FROM {DATABASE}.{tabela}
         WHERE {where_clause}
         ORDER BY din_instante DESC
         LIMIT {limit}
     """
     return pd.DataFrame(
         client.query(query).result_rows,
-        columns=['Data/Hora', 'Usina', 'CEG', 'Estado', 'Ger. Estimada', 'Ger. Verificada', 'Vento', 'Vento Invalido']
+        columns=['Data/Hora', 'Usina', 'CEG', 'Estado', 'Ger. Estimada', 'Ger. Verificada', label_recurso, f'{label_recurso} Invalido']
     )
 
 
 def render_usina_tab():
     """Renderiza aba de Detalhamento por Usina"""
 
-    try:
-        min_date, max_date = usina_load_date_range()
+    # Sidebar - Seletor de fonte
+    st.sidebar.header("Filtros - Usina")
 
-        # Sidebar
-        st.sidebar.header("Filtros - Usina")
+    fonte_usina = st.sidebar.radio(
+        "Fonte de Energia",
+        list(FONTES_USINA.keys()),
+        horizontal=True,
+        key="fonte_usina"
+    )
+
+    config = FONTES_USINA[fonte_usina]
+    tabela = config["tabela"]
+    icone = config["icone"]
+    campo_recurso = config["campo_recurso"]
+    campo_flag = config["campo_flag"]
+    label_recurso = config["label_recurso"]
+    label_qualidade = config["label_qualidade"]
+
+    try:
+        min_date, max_date = usina_load_date_range(tabela)
 
         # Busca rapida
         st.sidebar.subheader("Busca Rapida")
         search_text = st.sidebar.text_input(
             "Buscar usina (nome ou CEG)",
-            placeholder="Ex: Serra, EOL.CV, Ventos...",
+            placeholder="Ex: Serra, EOL.CV, UFV...",
             help="Digite 3+ caracteres para buscar",
             key="search_usina"
         )
@@ -510,7 +557,7 @@ def render_usina_tab():
         search_filters = None
 
         if len(search_text) >= 3:
-            search_results = usina_search(search_text)
+            search_results = usina_search(search_text, tabela)
 
             if search_results:
                 search_options = ["-- Selecione --"] + [
@@ -556,20 +603,20 @@ def render_usina_tab():
             if st.sidebar.button("Limpar busca", key="limpar_usina"):
                 st.rerun()
         else:
-            all_subsistemas = usina_load_subsistemas()
+            all_subsistemas = usina_load_subsistemas(tabela)
             selected_subsistemas = st.sidebar.multiselect(
                 "Subsistema", options=all_subsistemas, default=[],
                 help="Filtra estados disponiveis", key="subsistema_usina"
             )
 
-            available_estados = usina_load_estados(tuple(selected_subsistemas))
+            available_estados = usina_load_estados(tabela, tuple(selected_subsistemas))
             selected_estados = st.sidebar.multiselect(
                 "Estado", options=available_estados, default=[],
                 help="Filtra conjuntos disponiveis", key="estado_usina"
             )
 
             available_conjuntos = usina_load_conjuntos(
-                tuple(selected_subsistemas), tuple(selected_estados)
+                tabela, tuple(selected_subsistemas), tuple(selected_estados)
             )
             selected_conjuntos = st.sidebar.multiselect(
                 "Conjunto", options=available_conjuntos, default=[],
@@ -577,7 +624,7 @@ def render_usina_tab():
             )
 
             available_usinas = usina_load_usinas(
-                tuple(selected_subsistemas), tuple(selected_estados), tuple(selected_conjuntos)
+                tabela, tuple(selected_subsistemas), tuple(selected_estados), tuple(selected_conjuntos)
             )
 
             usina_options = ["Todas (agregado)"] + [f"{row[0]} ({row[1]})" for row in available_usinas]
@@ -647,18 +694,19 @@ def render_usina_tab():
 
         # Construir where
         where_clause = usina_build_where_clause(
+            tabela,
             tuple(selected_subsistemas), tuple(selected_estados),
             tuple(selected_conjuntos), tuple(selected_usinas),
             data_inicio, data_fim
         )
 
         # Header
-        st.header("Detalhamento por Usina")
-        st.markdown("Analise detalhada de geracao eolica por usina individual")
+        st.header(f"{icone} Detalhamento por Usina - {fonte_usina}")
+        st.markdown(f"Analise detalhada de geracao {fonte_usina.lower()} por usina individual")
 
         # Card usina selecionada
         if len(selected_usinas) == 1:
-            usina_info = usina_load_info(selected_usinas[0])
+            usina_info = usina_load_info(tabela, selected_usinas[0])
             if usina_info:
                 st.markdown("---")
                 st.subheader(f"{usina_info['nome']}")
@@ -673,13 +721,13 @@ def render_usina_tab():
 
         # Metricas
         st.markdown("---")
-        metrics = usina_load_metrics(where_clause)
+        metrics = usina_load_metrics(tabela, campo_flag, where_clause)
 
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Total Registros", f"{metrics['total_registros']:,}")
         col2.metric("Ger. Estimada Media", f"{metrics['media_estimada']:.1f} MW")
         col3.metric("Ger. Verificada Media", f"{metrics['media_verificada']:.1f} MW")
-        col4.metric("% Vento Valido", f"{metrics['pct_vento_valido']:.1f}%")
+        col4.metric(f"% {label_recurso} Valido", f"{metrics['pct_valido']:.1f}%")
         col5.metric(
             "Diferenca Media", f"{metrics['diff_media']:.1f} MW",
             delta=f"{metrics['diff_media']:.1f}" if metrics['diff_media'] != 0 else None,
@@ -689,11 +737,11 @@ def render_usina_tab():
         # Graficos
         st.markdown("---")
 
-        tab1, tab2, tab3 = st.tabs(["Serie Temporal", "Correlacao", "Qualidade do Vento"])
+        tab1, tab2, tab3 = st.tabs(["Serie Temporal", "Correlacao", label_qualidade])
 
         with tab1:
             st.subheader("Geracao Estimada vs Verificada")
-            df_ts, label = usina_load_timeseries(where_clause, granularidade, tuple(selected_usinas))
+            df_ts, label = usina_load_timeseries(tabela, where_clause, granularidade, tuple(selected_usinas))
 
             if not df_ts.empty:
                 if 'Usina' in df_ts.columns:
@@ -734,7 +782,7 @@ def render_usina_tab():
 
         with tab2:
             st.subheader("Correlacao: Estimada vs Verificada")
-            df_corr = usina_load_correlation_data(where_clause)
+            df_corr = usina_load_correlation_data(tabela, where_clause)
 
             if not df_corr.empty and len(df_corr) > 10:
                 correlation = df_corr['Estimada'].corr(df_corr['Verificada'])
@@ -769,25 +817,25 @@ def render_usina_tab():
                 st.info("Dados insuficientes para analise de correlacao.")
 
         with tab3:
-            st.subheader("Qualidade dos Dados de Vento por Mes")
-            df_wind = usina_load_wind_quality(where_clause)
+            st.subheader(f"{label_qualidade} por Mes")
+            df_quality = usina_load_resource_quality(tabela, campo_flag, where_clause)
 
-            if not df_wind.empty:
-                df_wind_long = df_wind.melt(
+            if not df_quality.empty:
+                df_quality_long = df_quality.melt(
                     id_vars=['Mes'], value_vars=['Validos', 'Invalidos'],
                     var_name='Status', value_name='Quantidade'
                 )
 
                 fig = px.bar(
-                    df_wind_long, x='Mes', y='Quantidade', color='Status', barmode='group',
+                    df_quality_long, x='Mes', y='Quantidade', color='Status', barmode='group',
                     color_discrete_map={'Validos': '#28a745', 'Invalidos': '#dc3545'}
                 )
                 fig.update_layout(xaxis_title="Mes", yaxis_title="Quantidade de Registros", height=400)
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                total_validos = df_wind['Validos'].sum()
-                total_invalidos = df_wind['Invalidos'].sum()
+                total_validos = df_quality['Validos'].sum()
+                total_invalidos = df_quality['Invalidos'].sum()
                 pct_validos = total_validos / (total_validos + total_invalidos) * 100 if (total_validos + total_invalidos) > 0 else 0
 
                 col1, col2, col3 = st.columns(3)
@@ -801,7 +849,7 @@ def render_usina_tab():
         st.markdown("---")
         with st.expander("Ver Dados Brutos", expanded=False):
             n_registros = st.slider("Numero de registros", 100, 5000, 1000, 100, key="slider_usina")
-            df_raw = usina_load_raw_data(where_clause, n_registros)
+            df_raw = usina_load_raw_data(tabela, campo_recurso, campo_flag, label_recurso, where_clause, n_registros)
 
             if not df_raw.empty:
                 st.dataframe(df_raw, use_container_width=True, hide_index=True)
@@ -809,7 +857,7 @@ def render_usina_tab():
                 csv = df_raw.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download CSV", data=csv,
-                    file_name=f"curtailment_usina_{data_inicio}_{data_fim}.csv",
+                    file_name=f"curtailment_{fonte_usina.lower()}_usina_{data_inicio}_{data_fim}.csv",
                     mime="text/csv", key="download_usina"
                 )
             else:
@@ -836,10 +884,35 @@ with tab_conjunto:
 with tab_usina:
     render_usina_tab()
 
-# Footer
+# ============================================================================
+# FOOTER
+# ============================================================================
+
 st.markdown("---")
+
+# Footer com informacoes do desenvolvedor
+footer_col1, footer_col2, footer_col3 = st.columns([2, 1, 1])
+
+with footer_col1:
+    st.markdown(
+        "**BrazilGrid** | Dados: [ONS](https://dados.ons.org.br/) | "
+        "Desenvolvido por **Breno Loureiro**"
+    )
+
+with footer_col2:
+    st.markdown(
+        "[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/breno-loureiro-0a49a320) "
+        "[breno@brikeng.com](mailto:breno@brikeng.com)"
+    )
+
+with footer_col3:
+    st.link_button(
+        "Feedback",
+        "https://docs.google.com/forms/d/e/1FAIpQLSctTlCvdNpo4f2Av3VOwiu79RhfyH2GlQ1v-DsrwC74AFx70Q/viewform",
+        type="secondary"
+    )
+
 st.caption(
-    "**BrazilGrid** | Dados: ONS | "
     "Formula Conjunto: Curtailment = val_geracaoreferencia - val_geracao (quando cod_razaorestricao != null) | "
     "Campos Usina: val_geracaoestimada, val_geracaoverificada"
 )
