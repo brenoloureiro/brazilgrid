@@ -15,14 +15,25 @@ st.set_page_config(
     layout="wide"
 )
 
+def get_clickhouse_config():
+    """Carrega config do ClickHouse (Streamlit Cloud ou Prefect local)"""
+    try:
+        # Streamlit Cloud
+        return dict(st.secrets["clickhouse"])
+    except Exception:
+        # Local com Prefect
+        from shared.handlers.config_secrets import get_clickhouse_config as prefect_config
+        return prefect_config()
+
 @st.cache_resource
 def get_client():
-    """Conexao com ClickHouse via Streamlit Secrets"""
+    """Conexao com ClickHouse"""
+    config = get_clickhouse_config()
     return clickhouse_connect.get_client(
-        host=st.secrets["clickhouse"]["host"],
-        port=st.secrets["clickhouse"]["port"],
-        user=st.secrets["clickhouse"]["user"],
-        password=st.secrets["clickhouse"]["password"],
+        host=config["host"],
+        port=config["port"],
+        user=config["user"],
+        password=config["password"],
         secure=True
     )
 
