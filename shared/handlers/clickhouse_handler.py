@@ -3,7 +3,7 @@ ClickHouse Handler - Inserção de dados com Polars
 """
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import polars as pl
 import pandas as pd
 import clickhouse_connect
@@ -38,7 +38,8 @@ class ClickHouseHandler:
         parquet_path: Path,
         table: str,
         source_file: str,
-        max_date: Optional[datetime] = None
+        max_date: Optional[datetime] = None,
+        required_cols: Optional[List[str]] = None
     ) -> int:
         """
         Insere dados INCREMENTALMENTE de arquivo Parquet no ClickHouse
@@ -49,6 +50,7 @@ class ClickHouseHandler:
             table: Nome da tabela
             source_file: Nome do arquivo original (para metadata)
             max_date: Data máxima já existente no CH (inserir apenas > max_date)
+            required_cols: Lista de colunas obrigatórias (None = padrão conjunto)
             
         Returns:
             Número de registros inseridos
@@ -77,15 +79,17 @@ class ClickHouseHandler:
                         )
                         df = df.with_columns(pl.col(col).cast(pl.Float64))
             
-            # Validar colunas obrigatórias
-            required_cols = [
-                'id_subsistema', 'nom_subsistema', 'id_estado', 'nom_estado',
-                'id_ons', 'ceg', 'din_instante', 'val_geracao'
-            ]
+            # Validar colunas obrigatórias (default: conjunto, pode ser override)
+            if required_cols is None:
+                required_cols = [
+                    'id_subsistema', 'nom_subsistema', 'id_estado', 'nom_estado',
+                    'id_ons', 'ceg', 'din_instante', 'val_geracao'
+                ]
             
-            missing_cols = set(required_cols) - set(df.columns)
-            if missing_cols:
-                raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
+            if required_cols:  # Se lista não vazia, validar
+                missing_cols = set(required_cols) - set(df.columns)
+                if missing_cols:
+                    raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
             
             # BEST PRACTICE: Armazenar em UTC
             # ONS envia dados naive em BRT (UTC-3)
@@ -163,15 +167,17 @@ class ClickHouseHandler:
             
             get_logger().info(f"Parquet carregado: {rows_before:,} registros")
             
-            # Validar colunas obrigatórias
-            required_cols = [
-                'id_subsistema', 'nom_subsistema', 'id_estado', 'nom_estado',
-                'id_ons', 'ceg', 'din_instante', 'val_geracao'
-            ]
+            # Validar colunas obrigatórias (default: conjunto, pode ser override)
+            if required_cols is None:
+                required_cols = [
+                    'id_subsistema', 'nom_subsistema', 'id_estado', 'nom_estado',
+                    'id_ons', 'ceg', 'din_instante', 'val_geracao'
+                ]
             
-            missing_cols = set(required_cols) - set(df.columns)
-            if missing_cols:
-                raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
+            if required_cols:  # Se lista não vazia, validar
+                missing_cols = set(required_cols) - set(df.columns)
+                if missing_cols:
+                    raise ValueError(f"Colunas obrigatórias ausentes: {missing_cols}")
             
             # Adicionar metadados
             df = df.with_columns([

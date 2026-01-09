@@ -108,11 +108,13 @@ def insert_clickhouse_task(
             logger.info(f"Primeira inserção na tabela")
 
         # Inserir dados incrementalmente
+        # required_cols=[] pula validação (dataset detail tem schema diferente)
         rows = ch_handler.insert_parquet_incremental(
             parquet_path=parquet_path,
             table=table,
             source_file=source_file,
-            max_date=max_date
+            max_date=max_date,
+            required_cols=[]
         )
 
         return rows
