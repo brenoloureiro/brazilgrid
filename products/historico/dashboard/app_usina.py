@@ -25,6 +25,7 @@ DATABASE = "brazilgrid_historico"
 TABLE = "curtailment_eolico_usina"
 
 
+@st.cache_data(ttl=3600)
 def get_clickhouse_config():
     """Obter config do ClickHouse (Streamlit secrets ou Prefect)"""
     try:
@@ -34,14 +35,37 @@ def get_clickhouse_config():
         return prefect_config()
 
 
-@st.cache_resource
 def get_client():
-    """Conexao com ClickHouse"""
+    """Criar novo cliente ClickHouse (sem cache para evitar concurrent queries)"""
     config = get_clickhouse_config()
     return clickhouse_connect.get_client(
         host=config["host"], port=config["port"],
         user=config["user"], password=config["password"], secure=True
     )
+
+
+# ============================================================================
+# FUNCOES DE DADOS - BUSCA POR NOME/CEG
+# ============================================================================
+
+@st.cache_data(ttl=300)
+def search_usinas(texto: str):
+    """Buscar usinas por nome ou CEG"""
+    if len(texto) < 3:
+        return []
+
+    client = get_client()
+    # Escapar aspas simples
+    texto_escaped = texto.replace("'", "''")
+    query = f"""
+        SELECT DISTINCT nom_usina, ceg, id_estado, id_subsistema, nom_conjuntousina
+        FROM {DATABASE}.{TABLE}
+        WHERE nom_usina ILIKE '%{texto_escaped}%' OR ceg ILIKE '%{texto_escaped}%'
+        ORDER BY nom_usina
+        LIMIT 50
+    """
+    result = client.query(query).result_rows
+    return result
 
 
 # ============================================================================
@@ -121,12 +145,14 @@ def load_usinas(subsistemas: tuple, estados: tuple, conjuntos: tuple):
 def load_usina_info(usina_nome: str):
     """Carregar informacoes detalhadas da usina"""
     client = get_client()
+    # Escapar aspas simples
+    usina_escaped = usina_nome.replace("'", "''")
     query = f"""
         SELECT
             nom_usina, ceg, id_ons, id_estado, id_subsistema,
             nom_modalidadeoperacao, nom_conjuntousina
         FROM {DATABASE}.{TABLE}
-        WHERE nom_usina = '{usina_nome}'
+        WHERE nom_usina = '{usina_escaped}'
         LIMIT 1
     """
     result = client.query(query).result_rows
@@ -165,7 +191,8 @@ def build_where_clause(subsistemas, estados, conjuntos, usinas, data_inicio, dat
     ]
 
     if usinas:
-        usinas_str = ", ".join([f"'{u}'" for u in usinas])
+        usinas_escaped = [u.replace("'", "''") for u in usinas]
+        usinas_str = ", ".join([f"'{u}'" for u in usinas_escaped])
         conditions.append(f"nom_usina IN ({usinas_str})")
     else:
         if subsistemas:
@@ -334,83 +361,158 @@ try:
     min_date, max_date = load_date_range()
 
     # ========================================================================
-    # SIDEBAR - FILTROS EM CASCATA
+    # SIDEBAR - BUSCA RAPIDA E FILTROS EM CASCATA
     # ========================================================================
 
     st.sidebar.header("Filtros")
 
-    # 1. Subsistema (multiselect)
-    all_subsistemas = load_subsistemas()
-    selected_subsistemas = st.sidebar.multiselect(
-        "Subsistema",
-        options=all_subsistemas,
-        default=[],
-        help="Filtra estados disponiveis"
+    # ========================================================================
+    # BUSCA RAPIDA POR NOME/CEG
+    # ========================================================================
+
+    st.sidebar.subheader("🔍 Busca Rapida")
+    search_text = st.sidebar.text_input(
+        "Buscar usina (nome ou CEG)",
+        placeholder="Ex: Serra, EOL.CV, Ventos...",
+        help="Digite 3+ caracteres para buscar"
     )
 
-    # 2. Estado (multiselect) - filtrado por subsistema
-    available_estados = load_estados(tuple(selected_subsistemas))
-    selected_estados = st.sidebar.multiselect(
-        "Estado",
-        options=available_estados,
-        default=[],
-        help="Filtra conjuntos disponiveis"
-    )
+    # Variaveis para usina selecionada via busca
+    usina_from_search = None
+    search_filters = None
 
-    # 3. Conjunto (multiselect) - filtrado por subsistema e estado
-    available_conjuntos = load_conjuntos(
-        tuple(selected_subsistemas),
-        tuple(selected_estados)
-    )
-    selected_conjuntos = st.sidebar.multiselect(
-        "Conjunto",
-        options=available_conjuntos,
-        default=[],
-        help="Filtra usinas disponiveis"
-    )
+    if len(search_text) >= 3:
+        search_results = search_usinas(search_text)
 
-    # 4. Usina (selectbox com busca) - filtrado pelos anteriores
-    available_usinas = load_usinas(
-        tuple(selected_subsistemas),
-        tuple(selected_estados),
-        tuple(selected_conjuntos)
-    )
+        if search_results:
+            # Criar opcoes para selectbox
+            search_options = ["-- Selecione --"] + [
+                f"{row[0]} ({row[1]}) - {row[2]}" for row in search_results
+            ]
+            search_map = {
+                f"{row[0]} ({row[1]}) - {row[2]}": {
+                    'nome': row[0],
+                    'ceg': row[1],
+                    'estado': row[2],
+                    'subsistema': row[3],
+                    'conjunto': row[4]
+                } for row in search_results
+            }
 
-    # Criar opcoes com nome e CEG para busca
-    usina_options = ["Todas (agregado)"] + [
-        f"{row[0]} ({row[1]})" for row in available_usinas
-    ]
-    usina_map = {f"{row[0]} ({row[1]})": row[0] for row in available_usinas}
+            selected_search = st.sidebar.selectbox(
+                f"Resultados ({len(search_results)})",
+                options=search_options,
+                key="search_results"
+            )
 
-    selected_usina_display = st.sidebar.selectbox(
-        "Usina",
-        options=usina_options,
-        index=0,
-        help="Busque por nome ou CEG"
-    )
-
-    # Extrair nome da usina selecionada
-    if selected_usina_display == "Todas (agregado)":
-        selected_usinas = []
-    else:
-        selected_usinas = [usina_map[selected_usina_display]]
-
-    # Opcao de comparar multiplas usinas
-    if not selected_usinas:
-        compare_usinas = st.sidebar.multiselect(
-            "Comparar usinas",
-            options=[row[0] for row in available_usinas],
-            default=[],
-            max_selections=5,
-            help="Selecione ate 5 usinas para comparar"
-        )
-        if compare_usinas:
-            selected_usinas = compare_usinas
+            if selected_search != "-- Selecione --":
+                usina_from_search = search_map[selected_search]['nome']
+                search_filters = search_map[selected_search]
+                st.sidebar.success(f"✅ {usina_from_search}")
+        else:
+            st.sidebar.warning("Nenhuma usina encontrada")
 
     st.sidebar.markdown("---")
 
-    # 5. Periodo
-    st.sidebar.subheader("Periodo")
+    # ========================================================================
+    # FILTROS EM CASCATA (desabilitados se usina via busca)
+    # ========================================================================
+
+    st.sidebar.subheader("📊 Filtros em Cascata")
+
+    if usina_from_search:
+        st.sidebar.info(f"Filtros auto-preenchidos pela busca")
+        # Mostrar filtros preenchidos (somente leitura)
+        st.sidebar.text(f"Subsistema: {search_filters['subsistema']}")
+        st.sidebar.text(f"Estado: {search_filters['estado']}")
+        st.sidebar.text(f"Conjunto: {search_filters['conjunto'] or 'Individual'}")
+        st.sidebar.text(f"Usina: {usina_from_search}")
+
+        # Usar valores da busca
+        selected_subsistemas = []
+        selected_estados = []
+        selected_conjuntos = []
+        selected_usinas = [usina_from_search]
+
+        # Botao para limpar busca
+        if st.sidebar.button("🗑️ Limpar busca"):
+            st.rerun()
+    else:
+        # 1. Subsistema (multiselect)
+        all_subsistemas = load_subsistemas()
+        selected_subsistemas = st.sidebar.multiselect(
+            "Subsistema",
+            options=all_subsistemas,
+            default=[],
+            help="Filtra estados disponiveis"
+        )
+
+        # 2. Estado (multiselect) - filtrado por subsistema
+        available_estados = load_estados(tuple(selected_subsistemas))
+        selected_estados = st.sidebar.multiselect(
+            "Estado",
+            options=available_estados,
+            default=[],
+            help="Filtra conjuntos disponiveis"
+        )
+
+        # 3. Conjunto (multiselect) - filtrado por subsistema e estado
+        available_conjuntos = load_conjuntos(
+            tuple(selected_subsistemas),
+            tuple(selected_estados)
+        )
+        selected_conjuntos = st.sidebar.multiselect(
+            "Conjunto",
+            options=available_conjuntos,
+            default=[],
+            help="Filtra usinas disponiveis"
+        )
+
+        # 4. Usina (selectbox com busca) - filtrado pelos anteriores
+        available_usinas = load_usinas(
+            tuple(selected_subsistemas),
+            tuple(selected_estados),
+            tuple(selected_conjuntos)
+        )
+
+        # Criar opcoes com nome e CEG para busca
+        usina_options = ["Todas (agregado)"] + [
+            f"{row[0]} ({row[1]})" for row in available_usinas
+        ]
+        usina_map = {f"{row[0]} ({row[1]})": row[0] for row in available_usinas}
+
+        selected_usina_display = st.sidebar.selectbox(
+            "Usina",
+            options=usina_options,
+            index=0,
+            help="Selecione uma usina especifica"
+        )
+
+        # Extrair nome da usina selecionada
+        if selected_usina_display == "Todas (agregado)":
+            selected_usinas = []
+        else:
+            selected_usinas = [usina_map[selected_usina_display]]
+
+        # Opcao de comparar multiplas usinas
+        if not selected_usinas:
+            compare_usinas = st.sidebar.multiselect(
+                "Comparar usinas",
+                options=[row[0] for row in available_usinas],
+                default=[],
+                max_selections=5,
+                help="Selecione ate 5 usinas para comparar"
+            )
+            if compare_usinas:
+                selected_usinas = compare_usinas
+
+    st.sidebar.markdown("---")
+
+    # ========================================================================
+    # PERIODO
+    # ========================================================================
+
+    st.sidebar.subheader("📅 Periodo")
     periodo_preset = st.sidebar.selectbox(
         "Preset",
         ["Ultimos 30 dias", "Ultimos 90 dias", "Ultimo ano", "Todo historico", "Personalizado"]
